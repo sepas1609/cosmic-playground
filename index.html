@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Cosmic Playground · Boddu Saran</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#000;overflow:hidden;font-family:'Courier New',monospace}
+  canvas{display:block}
+  #ui{position:fixed;top:20px;left:50%;transform:translateX(-50%);text-align:center;z-index:10;pointer-events:none}
+  #ui h1{font-size:1.1rem;color:#00e5ff;letter-spacing:3px;text-shadow:0 0 20px #00e5ff;opacity:.85}
+  #ui p{font-size:.7rem;color:#888;margin-top:4px;letter-spacing:1px}
+  #bottom{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:10;display:flex;gap:12px;align-items:center}
+  #bottom a{color:#00e5ff;text-decoration:none;font-size:.75rem;letter-spacing:2px;border:1px solid #00e5ff44;padding:6px 16px;border-radius:20px;background:rgba(0,229,255,.06);backdrop-filter:blur(8px);transition:all .3s}
+  #bottom a:hover{background:rgba(0,229,255,.18);box-shadow:0 0 16px #00e5ff44}
+  #counter{color:#ff007a;font-size:.7rem;letter-spacing:1px}
+  #hint{position:fixed;bottom:60px;left:50%;transform:translateX(-50%);color:#444;font-size:.65rem;letter-spacing:1px;pointer-events:none}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="ui">
+  <h1>🌌 COSMIC PLAYGROUND</h1>
+  <p>Click · Spawn Planets &nbsp;|&nbsp; Drag · Fling Them</p>
+</div>
+<div id="hint">Move cursor → create star trails &nbsp;|&nbsp; Click → spawn planet</div>
+<div id="bottom">
+  <span id="counter">☄️ 0 planets</span>
+  <a href="https://github.com/sepas1609" target="_blank">⚡ sepas1609</a>
+</div>
+<script>
+const c=document.getElementById('c');
+const ctx=c.getContext('2d');
+let W=c.width=innerWidth,H=c.height=innerHeight;
+window.addEventListener('resize',()=>{W=c.width=innerWidth;H=c.height=innerHeight});
+
+const stars=[];const planets=[];const particles=[];
+let mx=W/2,my=H/2,dragging=false,dragStart=null,dragPlanet=null;
+const planetCount=document.getElementById('counter');
+
+// Background stars
+for(let i=0;i<300;i++){
+  stars.push({x:Math.random()*W,y:Math.random()*H,r:Math.random()*1.5,t:Math.random()*Math.PI*2,s:0.3+Math.random()*0.7});
+}
+
+function spawnParticle(x,y){
+  const angle=Math.random()*Math.PI*2;
+  const speed=0.5+Math.random()*2;
+  particles.push({x,y,vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed,life:1,maxLife:60+Math.random()*60,hue:180+Math.random()*80});
+}
+
+function spawnPlanet(x,y,vx,vy){
+  const hues=[0,30,120,200,280,330];
+  const h=hues[Math.floor(Math.random()*hues.length)];
+  const r=8+Math.random()*20;
+  planets.push({x,y,vx:vx||0,vy:vy||0,r,hue:h,trail:[],rot:0,rotSpeed:(Math.random()-.5)*.05,rings:Math.random()>.6});
+}
+
+// Spawn a few starter planets
+for(let i=0;i<5;i++) spawnPlanet(100+Math.random()*(W-200),100+Math.random()*(H-200),(Math.random()-.5)*1.5,(Math.random()-.5)*1.5);
+
+document.addEventListener('mousemove',e=>{
+  const dx=e.clientX-mx,dy=e.clientY-my;
+  mx=e.clientX;my=e.clientY;
+  for(let i=0;i<3;i++) spawnParticle(mx+Math.random()*4-2,my+Math.random()*4-2);
+  if(dragPlanet){dragPlanet.x=mx;dragPlanet.y=my}
+});
+
+document.addEventListener('mousedown',e=>{
+  dragStart={x:e.clientX,y:e.clientY,t:Date.now()};
+  dragPlanet=null;
+  for(const p of planets){
+    const d=Math.hypot(p.x-e.clientX,p.y-e.clientY);
+    if(d<p.r+10){dragPlanet=p;dragPlanet.vx=0;dragPlanet.vy=0;break}
+  }
+});
+
+document.addEventListener('mouseup',e=>{
+  if(dragPlanet){
+    const dt=Math.max(1,Date.now()-dragStart.t);
+    dragPlanet.vx=(e.clientX-dragStart.x)/dt*10;
+    dragPlanet.vy=(e.clientY-dragStart.y)/dt*10;
+    dragPlanet=null;
+  } else {
+    const dist=Math.hypot(e.clientX-dragStart.x,e.clientY-dragStart.y);
+    if(dist<5) spawnPlanet(e.clientX,e.clientY,(Math.random()-.5),(Math.random()-.5));
+  }
+});
+
+// Touch support
+document.addEventListener('touchstart',e=>{e.preventDefault();const t=e.touches[0];spawnPlanet(t.clientX,t.clientY,(Math.random()-.5),(Math.random()-.5))},{passive:false});
+document.addEventListener('touchmove',e=>{e.preventDefault();const t=e.touches[0];mx=t.clientX;my=t.clientY;for(let i=0;i<3;i++)spawnParticle(mx,my)},{passive:false});
+
+let frame=0;
+function draw(){
+  frame++;
+  ctx.fillStyle='rgba(0,0,0,0.15)';
+  ctx.fillRect(0,0,W,H);
+
+  // Stars
+  for(const s of stars){
+    s.t+=0.02*s.s;
+    const alpha=0.3+0.5*Math.sin(s.t);
+    ctx.fillStyle=`rgba(255,255,255,${alpha})`;
+    ctx.beginPath();ctx.arc(s.x,s.y,s.r,0,Math.PI*2);ctx.fill();
+  }
+
+  // Particles (mouse trails)
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    p.x+=p.vx;p.y+=p.vy;p.vx*=0.97;p.vy*=0.97;p.life--;
+    if(p.life<=0){particles.splice(i,1);continue}
+    const a=p.life/p.maxLife;
+    ctx.fillStyle=`hsla(${p.hue},100%,70%,${a*0.8})`;
+    const r=2*a;
+    ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fill();
+  }
+
+  // Planets gravity
+  for(let i=0;i<planets.length;i++){
+    for(let j=i+1;j<planets.length;j++){
+      const a=planets[i],b=planets[j];
+      const dx=b.x-a.x,dy=b.y-a.y;
+      const dist=Math.max(50,Math.hypot(dx,dy));
+      const force=(a.r*b.r*0.004)/(dist*dist);
+      const fx=dx/dist*force,fy=dy/dist*force;
+      if(a!==dragPlanet){a.vx+=fx/a.r;a.vy+=fy/a.r}
+      if(b!==dragPlanet){b.vx-=fx/b.r;b.vy-=fy/b.r}
+    }
+  }
+
+  // Draw planets
+  for(const p of planets){
+    if(p!==dragPlanet){
+      p.vx*=0.999;p.vy*=0.999;
+      p.x+=p.vx;p.y+=p.vy;
+      if(p.x<-50)p.x=W+50;if(p.x>W+50)p.x=-50;
+      if(p.y<-50)p.y=H+50;if(p.y>H+50)p.y=-50;
+    }
+    p.rot+=p.rotSpeed;
+    p.trail.unshift({x:p.x,y:p.y});
+    if(p.trail.length>30)p.trail.pop();
+
+    // Trail
+    for(let i=1;i<p.trail.length;i++){
+      const a=(1-i/p.trail.length)*0.4;
+      ctx.strokeStyle=`hsla(${p.hue},100%,60%,${a})`;
+      ctx.lineWidth=p.r*0.3*(1-i/p.trail.length);
+      ctx.beginPath();ctx.moveTo(p.trail[i-1].x,p.trail[i-1].y);ctx.lineTo(p.trail[i].x,p.trail[i].y);ctx.stroke();
+    }
+
+    // Glow
+    const grd=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,p.r*2.5);
+    grd.addColorStop(0,`hsla(${p.hue},100%,70%,0.3)`);
+    grd.addColorStop(1,`hsla(${p.hue},100%,70%,0)`);
+    ctx.fillStyle=grd;
+    ctx.beginPath();ctx.arc(p.x,p.y,p.r*2.5,0,Math.PI*2);ctx.fill();
+
+    // Planet body
+    const grad=ctx.createRadialGradient(p.x-p.r*.3,p.y-p.r*.3,0,p.x,p.y,p.r);
+    grad.addColorStop(0,`hsl(${p.hue+40},80%,80%)`);
+    grad.addColorStop(0.5,`hsl(${p.hue},80%,55%)`);
+    grad.addColorStop(1,`hsl(${p.hue-20},60%,25%)`);
+    ctx.fillStyle=grad;
+    ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill();
+
+    // Rings
+    if(p.rings){
+      ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.rot);
+      ctx.strokeStyle=`hsla(${p.hue},80%,70%,0.5)`;
+      ctx.lineWidth=2;
+      ctx.beginPath();ctx.ellipse(0,0,p.r*2,p.r*0.5,0,0,Math.PI*2);ctx.stroke();
+      ctx.restore();
+    }
+
+    // Atmosphere shimmer
+    if(frame%2===0){
+      for(let i=0;i<2;i++) spawnParticle(p.x+(Math.random()-.5)*p.r*2,p.y+(Math.random()-.5)*p.r*2);
+    }
+  }
+
+  // Nebula near cursor
+  if(frame%3===0){
+    const grd=ctx.createRadialGradient(mx,my,0,mx,my,80);
+    grd.addColorStop(0,'rgba(0,229,255,0.03)');grd.addColorStop(1,'rgba(0,229,255,0)');
+    ctx.fillStyle=grd;ctx.fillRect(0,0,W,H);
+  }
+
+  planetCount.textContent=`☄️ ${planets.length} planet${planets.length!==1?'s':''}`;
+  requestAnimationFrame(draw);
+}
+draw();
+</script>
+</body>
+</html>
